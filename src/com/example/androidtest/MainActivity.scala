@@ -136,6 +136,33 @@ case class ParticleSystem(numParticles: Int) {
   colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
   val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
   
+  val vertexHandle = Array(1)
+  val sizeHandle = Array(1)
+  val colorHandle = Array(1)
+  
+  GLES20.glGenBuffers(1, vertexHandle, 0)
+  GLES20.glGenBuffers(1, sizeHandle, 0)
+  GLES20.glGenBuffers(1, colorHandle, 0)
+  
+  GLES20.glEnableVertexAttribArray(vertexHandle(0))
+  GLES20.glVertexAttribPointer(vertexHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  
+  GLES20.glEnableVertexAttribArray(sizeHandle(0))
+  GLES20.glVertexAttribPointer(sizeHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, sizeBuffer)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  
+  GLES20.glEnableVertexAttribArray(colorHandle(0))
+  GLES20.glVertexAttribPointer(colorHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, colorBuffer)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  
+  def draw(gl: GL10) = {
+    gl.glVertexPointer(2, GL10.GL_FLOAT, 0, getVertexArray)
+    gl.glColorPointer(4, GL10.GL_FLOAT, 0, getColorArray)
+    gl.asInstanceOf[GL11].glPointSizePointerOES(GL10.GL_FLOAT, 0, getSizeArray)
+    gl.glDrawArrays(GL10.GL_POINTS, 0, 1000)
+  }
+  
   abstract case class Particle(var x: Double,
                       var y: Double,
                       var xVel: Double,
@@ -386,12 +413,7 @@ class OpenGLRenderer extends Renderer {
       
       
       
-      Model.particleSystems.foreach{ system =>
-        gl.glVertexPointer(2, GL10.GL_FLOAT, 0, system.getVertexArray)
-        gl.glColorPointer(4, GL10.GL_FLOAT, 0, system.getColorArray)
-        gl.asInstanceOf[GL11].glPointSizePointerOES(GL10.GL_FLOAT, 0, system.getSizeArray)
-        gl.glDrawArrays(GL10.GL_POINTS, 0, 1000)
-      }
+      Model.particleSystems.foreach(_.draw(gl))
 
 //      gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
 //      gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
