@@ -35,6 +35,7 @@ import android.hardware.SensorEvent
 import android.content.Context
 import android.hardware.SensorManager
 import android.opengl.GLES20
+import android.opengl.Matrix
 
 object Screen {
   var width = 0
@@ -54,27 +55,34 @@ object Shaders {
   
   val vertexSource = """
         attribute vec4 vertexPosition;
+        uniform mat4 mvp;
+        attribute float pointSize;
+        
         void main() {
-          gl_Position = vertexPosition;
+          gl_Position = mvp * vertexPosition;
+          gl_PointSize = pointSize;
         }"""
 
   val fragmentSource = """
         precision mediump float;
         uniform vec4 color;
         void main() {
-          gl_FragColor = color;
+          gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0);
         }"""
+  
+  var program = 0
 }
 
 object ShaderUtils {
   
   def checkGlError(op: String) = {
         var error = GLES20.glGetError()
-        while (error != GLES20.GL_NO_ERROR) {
+        if (error != GLES20.GL_NO_ERROR) {
             Log.e("blah", op + ": glError " + error);
             error = GLES20.glGetError()
+            throw new RuntimeException(op + ": glError " + error);
         }
-        throw new RuntimeException(op + ": glError " + error);
+        
     }
   
   def createProgram(vertexSource: String , fragmentSource: String ) = {
@@ -84,9 +92,9 @@ object ShaderUtils {
     var program = GLES20.glCreateProgram();
     if (program != 0) {
         GLES20.glAttachShader(program, vertexShader);
-        checkGlError("glAttachShader")
+        checkGlError("glAttachVertexShader")
         GLES20.glAttachShader(program, pixelShader);
-        checkGlError("glAttachShader")
+        checkGlError("glAttachPixelShader")
         GLES20.glLinkProgram(program)
         val linkStatus: Array[Int] = Array(1)
         GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linkStatus, 0);
@@ -144,22 +152,35 @@ case class ParticleSystem(numParticles: Int) {
   GLES20.glGenBuffers(1, sizeHandle, 0)
   GLES20.glGenBuffers(1, colorHandle, 0)
   
-  GLES20.glEnableVertexAttribArray(vertexHandle(0))
-  GLES20.glVertexAttribPointer(vertexHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, vertexBuffer)
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
   
-  GLES20.glEnableVertexAttribArray(sizeHandle(0))
-  GLES20.glVertexAttribPointer(sizeHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, sizeBuffer)
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
   
-  GLES20.glEnableVertexAttribArray(colorHandle(0))
-  GLES20.glVertexAttribPointer(colorHandle(0), numParticles * 2 * 4, GLES20.GL_FLOAT, false, 0, colorBuffer)
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
+  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
   
-  def draw(gl: GL10) = {
-    gl.glVertexPointer(2, GL10.GL_FLOAT, 0, getVertexArray)
-    gl.glColorPointer(4, GL10.GL_FLOAT, 0, getColorArray)
-    gl.asInstanceOf[GL11].glPointSizePointerOES(GL10.GL_FLOAT, 0, getSizeArray)
+  def draw(gl: GL10, program: Int) = {
+    val vertexPositionAttribute = GLES20.glGetAttribLocation(program, "vertexPosition");
+    GLES20.glEnableVertexAttribArray(vertexPositionAttribute);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+    GLES20.glVertexAttribPointer(vertexPositionAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+
+    val sizeAttribute = GLES20.glGetAttribLocation(program, "pointSize");
+    GLES20.glEnableVertexAttribArray(sizeAttribute);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+    GLES20.glVertexAttribPointer(sizeAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+    
+    val colorAttribute = GLES20.glGetAttribLocation(program, "color");
+    GLES20.glEnableVertexAttribArray(colorAttribute);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+    GLES20.glVertexAttribPointer(colorAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+    
+
     gl.glDrawArrays(GL10.GL_POINTS, 0, 1000)
   }
   
@@ -353,22 +374,22 @@ class MainScala extends Activity with SensorEventListener {
 
   override def onCreate(savedInstanceState: Bundle) = {
     super.onCreate(savedInstanceState)
+    
+    
+    
     this.requestWindowFeature(Window.FEATURE_NO_TITLE)
     getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
     val view = new GLSurfaceView(this)
     view.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
     val renderer = new OpenGLRenderer()
-    //view.setEGLContextClientVersion(2) // assume Opengl 2.0
+    view.setEGLContextClientVersion(2) // assume Opengl 2.0
     view.setRenderer(renderer)
-    
-    //val program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
-    //GLES20.glUseProgram(program)
     
     setContentView(view);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED)
     
-    
+    Log.e("com.example.androidtest", "done setting content");
     val displaymetrics = new DisplayMetrics();
     getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
     Screen.height = displaymetrics.heightPixels;
@@ -382,23 +403,27 @@ class MainScala extends Activity with SensorEventListener {
 
 class OpenGLRenderer extends Renderer {
 
+  
+  
   def onSurfaceCreated(gl: GL10, config: EGLConfig) {
     //gl.glShadeModel(GL10.GL_SMOOTH); //Enable Smooth Shading
     GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //Black Background
     GLES20.glClearDepthf(1.0f); //Depth Buffer Setup
     GLES20.glDepthMask(false)
-    GLES20.glDisable(GL10.GL_DEPTH_TEST); //Enables Depth Testing
-    GLES20.glDepthFunc(GL10.GL_LEQUAL); //The Type Of Depth Testing To Do
+    GLES20.glDisable(GLES20.GL_DEPTH_TEST); //Enables Depth Testing
+    GLES20.glDepthFunc(GLES20.GL_LEQUAL); //The Type Of Depth Testing To Do
 
     //Really Nice Perspective Calculations
 //    gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_NICEST);
 //    gl.glPointSize(15.0f)
 //    gl.glEnable(GL10.GL_POINT_SMOOTH)
-    GLES20.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
-    GLES20.glEnable(GL10.GL_BLEND);
-    gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
-      gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
-      gl.glEnableClientState(GL10.GL_COLOR_ARRAY)
+    GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+    GLES20.glEnable(GLES20.GL_BLEND);
+    
+    Log.e("com.example.androidtest", "2compiling shader");
+    Shaders.program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
+    GLES20.glUseProgram(Shaders.program)
+    Log.e("com.example.androidtest", "2done compiling shader");
   }
 
   
@@ -407,13 +432,13 @@ class OpenGLRenderer extends Renderer {
 
     val startTime = SystemClock.elapsedRealtime
     
-    GLES20.glClear(GL10.GL_COLOR_BUFFER_BIT);
+    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
     Model synchronized {
       
       
       
-      Model.particleSystems.foreach(_.draw(gl))
+      Model.particleSystems.foreach(_.draw(gl, Shaders.program))
 
 //      gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
 //      gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
@@ -436,13 +461,15 @@ class OpenGLRenderer extends Renderer {
 
   def onSurfaceChanged(gl: GL10, width: Int, height: Int) {
     GLES20.glViewport(0, 0, width, height); //Reset The Current Viewport
-    gl.glMatrixMode(GL10.GL_PROJECTION); //Select The Projection Matrix
-    gl.glLoadIdentity(); //Reset The Projection Matrix
+    
+    val projection = Array.fill(16)(0.0f);
 
-    //Calculate The Aspect Ratio Of The Window
-    GLU.gluOrtho2D(gl, 0, width, 0, height);
-    gl.glMatrixMode(GL10.GL_MODELVIEW); //Select The Modelview Matrix
-    gl.glLoadIdentity(); //Reset The Modelview Matrix
+    Matrix.setIdentityM(projection, 0);
+    
+    val mvp = GLES20.glGetUniformLocation(Shaders.program, "mvp");
+
+    Matrix.orthoM(projection, 0, -width / 2, width / 2, -height / 2, height / 2, -1, 1);
+    GLES20.glUniformMatrix4fv(mvp, 1, false, projection, 0);
   }
 
 }
