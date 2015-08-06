@@ -34,6 +34,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.content.Context
 import android.hardware.SensorManager
+import android.opengl.GLES20
 
 object Screen {
   var width = 0
@@ -49,8 +50,76 @@ object Force {
   var forceZ = 0.0
 }
 
+object Shaders {
+  
+  val vertexSource = """
+        attribute vec4 vertexPosition;
+        void main() {
+          gl_Position = vertexPosition;
+        }"""
+
+  val fragmentSource = """
+        precision mediump float;
+        uniform vec4 color;
+        void main() {
+          gl_FragColor = color;
+        }"""
+}
+
+object ShaderUtils {
+  
+  def checkGlError(op: String) = {
+        var error = GLES20.glGetError()
+        while (error != GLES20.GL_NO_ERROR) {
+            Log.e("blah", op + ": glError " + error);
+            error = GLES20.glGetError()
+        }
+        throw new RuntimeException(op + ": glError " + error);
+    }
+  
+  def createProgram(vertexSource: String , fragmentSource: String ) = {
+    val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexSource)
+    val pixelShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentSource)
+
+    var program = GLES20.glCreateProgram();
+    if (program != 0) {
+        GLES20.glAttachShader(program, vertexShader);
+        checkGlError("glAttachShader")
+        GLES20.glAttachShader(program, pixelShader);
+        checkGlError("glAttachShader")
+        GLES20.glLinkProgram(program)
+        val linkStatus: Array[Int] = Array(1)
+        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linkStatus, 0);
+        if (linkStatus(0) != GLES20.GL_TRUE) {
+            Log.e("blah", "Could not link program: ")
+            Log.e("blah", GLES20.glGetProgramInfoLog(program))
+            GLES20.glDeleteProgram(program)
+            program = 0
+        }
+    }
+    program
+  }
+
+  def loadShader(shaderType: Int, source: String) = {
+      var shader = GLES20.glCreateShader(shaderType)
+      if (shader != 0) {
+          GLES20.glShaderSource(shader, source)
+          GLES20.glCompileShader(shader)
+          val compiled = Array[Int](1)
+          GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compiled, 0)
+          if (compiled(0) == 0) {
+              Log.e("blah", "Could not compile shader " + shaderType + ":")
+              Log.e("blah", GLES20.glGetShaderInfoLog(shader))
+              GLES20.glDeleteShader(shader)
+              shader = 0
+          }
+      }
+      shader
+  }
+}
+
 object Model {
-  val particleSystem = ParticleSystem(500)
+  val particleSystems = new ListBuffer[ParticleSystem]()// = ParticleSystem(500)
 }
 
 case class ParticleSystem(numParticles: Int) {
@@ -128,8 +197,8 @@ case class ParticleSystem(numParticles: Int) {
         
         val normVelX = newVelX / dist * speed
         val normVelY = newVelY / dist * speed
-        val size = rand.nextDouble() * 5.0 + 4.0
-        val totalLife = rand.nextDouble() * 5.0 + 2.0
+        val size = rand.nextDouble() * 3.0 + 4.0
+        val totalLife = rand.nextDouble() * 8.0 + 2.0
         
         
         particles += new Particle(x, y, normVelX, normVelY, size, totalLife) {
@@ -137,8 +206,8 @@ case class ParticleSystem(numParticles: Int) {
             particle.currentLife -= elapsedTime * 1.0
             particle.xVel += -Force.gravityX * elapsedTime * 600.0
             particle.yVel += -Force.gravityY * elapsedTime * 600.0
-            particle.xVel += -Force.forceX * elapsedTime * 6300.0
-            particle.yVel += -Force.forceY * elapsedTime * 6300.0
+            particle.xVel += -Force.forceX * elapsedTime * 4300.0
+            particle.yVel += -Force.forceY * elapsedTime * 4300.0
           }
           
           def onCollide(particle: Particle, value: Double) = {
@@ -150,8 +219,7 @@ case class ParticleSystem(numParticles: Int) {
   }
   
   def run(elapsedTime: Double) = {
-    this synchronized {
-      particles.par.foreach { particle =>
+      particles.foreach { particle =>
         
         var nextX = particle.x + particle.xVel * elapsedTime
         var nextY = particle.y + particle.yVel * elapsedTime
@@ -159,9 +227,7 @@ case class ParticleSystem(numParticles: Int) {
         if (nextX < 0.0) {
           nextX = 0.0
           particle.xVel = particle.onCollide(particle, particle.xVel)
-        }
-        
-        if (nextX > Screen.width) {
+        } else if (nextX > Screen.width) {
           nextX = Screen.width
           particle.xVel = particle.onCollide(particle, particle.xVel)
         }
@@ -169,9 +235,7 @@ case class ParticleSystem(numParticles: Int) {
         if (nextY < 0.0) {
           nextY = 0.0
           particle.yVel = particle.onCollide(particle, particle.yVel)
-        }
-        
-        if (nextY > Screen.height) {
+        } else if (nextY > Screen.height) {
           nextY = Screen.height
           particle.yVel = particle.onCollide(particle, particle.yVel)
         }
@@ -181,9 +245,10 @@ case class ParticleSystem(numParticles: Int) {
 
         particle.next(particle, elapsedTime)
       }
-      
-      particles = particles.filter(particle => particle.currentLife > 0.0)
-    }
+  }
+  
+  def isDone = {
+    particles.forall(particle => particle.currentLife <= 0.0)
   }
   
   def getVertexArray: FloatBuffer = {
@@ -223,19 +288,11 @@ class MainScala extends Activity with SensorEventListener {
   
   override def onSensorChanged(event: SensorEvent) = {
     if (event.sensor.getType == Sensor.TYPE_GRAVITY) {
-      //Log.v("blah", event.values(0).toString);
       Force.gravityX = event.values(0)
       Force.gravityY = event.values(1)
-//        gravity[0] = event.values[0];
-//        gravity[1] = event.values[1];
-//        gravity[2] = event.values[2];
     } else if (event.sensor.getType == Sensor.TYPE_LINEAR_ACCELERATION) {
-      //Log.v("blah", event.values(0).toString);
       Force.forceX = event.values(0)
       Force.forceY = event.values(1)
-//        gravity[0] = event.values[0];
-//        gravity[1] = event.values[1];
-//        gravity[2] = event.values[2];
     }
   }
 
@@ -247,7 +304,11 @@ class MainScala extends Activity with SensorEventListener {
         case (MotionEvent.ACTION_DOWN) =>
           
             //ParticleSystem.explode(event.getX, 1920 - event.getY)
-            Model.particleSystem.freeFall(event.getX, 1920 - event.getY)
+          Model synchronized {
+            val newSystem = ParticleSystem(1000)
+            Model.particleSystems += newSystem
+            newSystem.freeFall(event.getX, 1920 - event.getY)
+          }
             true
         case (MotionEvent.ACTION_MOVE) =>
           
@@ -264,16 +325,22 @@ class MainScala extends Activity with SensorEventListener {
   }
 
   override def onCreate(savedInstanceState: Bundle) = {
-    super.onCreate(savedInstanceState);
-    this.requestWindowFeature(Window.FEATURE_NO_TITLE); // (NEW)
-    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-      WindowManager.LayoutParams.FLAG_FULLSCREEN); // (NEW)
-    val view = new GLSurfaceView(this);
+    super.onCreate(savedInstanceState)
+    this.requestWindowFeature(Window.FEATURE_NO_TITLE)
+    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+    val view = new GLSurfaceView(this)
     view.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
-    view.setRenderer(new OpenGLRenderer());
+    val renderer = new OpenGLRenderer()
+    //view.setEGLContextClientVersion(2) // assume Opengl 2.0
+    view.setRenderer(renderer)
+    
+    //val program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
+    //GLES20.glUseProgram(program)
+    
     setContentView(view);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED)
+    
     
     val displaymetrics = new DisplayMetrics();
     getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
@@ -289,18 +356,22 @@ class MainScala extends Activity with SensorEventListener {
 class OpenGLRenderer extends Renderer {
 
   def onSurfaceCreated(gl: GL10, config: EGLConfig) {
-    gl.glShadeModel(GL10.GL_SMOOTH); //Enable Smooth Shading
-    gl.glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //Black Background
-    gl.glClearDepthf(1.0f); //Depth Buffer Setup
-    gl.glDisable(GL10.GL_DEPTH_TEST); //Enables Depth Testing
-    gl.glDepthFunc(GL10.GL_LEQUAL); //The Type Of Depth Testing To Do
+    //gl.glShadeModel(GL10.GL_SMOOTH); //Enable Smooth Shading
+    GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //Black Background
+    GLES20.glClearDepthf(1.0f); //Depth Buffer Setup
+    GLES20.glDepthMask(false)
+    GLES20.glDisable(GL10.GL_DEPTH_TEST); //Enables Depth Testing
+    GLES20.glDepthFunc(GL10.GL_LEQUAL); //The Type Of Depth Testing To Do
 
     //Really Nice Perspective Calculations
-    gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_NICEST);
-    gl.glPointSize(15.0f)
-    gl.glEnable(GL10.GL_POINT_SMOOTH)
-    gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
-    gl.glEnable(GL10.GL_BLEND);
+//    gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_NICEST);
+//    gl.glPointSize(15.0f)
+//    gl.glEnable(GL10.GL_POINT_SMOOTH)
+    GLES20.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
+    GLES20.glEnable(GL10.GL_BLEND);
+    gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
+      gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
+      gl.glEnableClientState(GL10.GL_COLOR_ARRAY)
   }
 
   
@@ -309,42 +380,40 @@ class OpenGLRenderer extends Renderer {
 
     val startTime = SystemClock.elapsedRealtime
     
-    gl.glClear(GL10.GL_COLOR_BUFFER_BIT |
-      GL10.GL_DEPTH_BUFFER_BIT);
-    gl.glColor4f(0.0f, 0.0f, 1.0f, 1.0f)
-    gl.glLoadIdentity()
-    
-    
-    var vertexArray: FloatBuffer = null
-    var sizeArray: FloatBuffer = null
-    var colorArray: FloatBuffer = null
+    GLES20.glClear(GL10.GL_COLOR_BUFFER_BIT);
 
-    Model.particleSystem synchronized {
-      vertexArray = Model.particleSystem.getVertexArray
-      sizeArray = Model.particleSystem.getSizeArray
-      colorArray = Model.particleSystem.getColorArray
+    Model synchronized {
+      
+      
+      
+      Model.particleSystems.foreach{ system =>
+        gl.glVertexPointer(2, GL10.GL_FLOAT, 0, system.getVertexArray)
+        gl.glColorPointer(4, GL10.GL_FLOAT, 0, system.getColorArray)
+        gl.asInstanceOf[GL11].glPointSizePointerOES(GL10.GL_FLOAT, 0, system.getSizeArray)
+        gl.glDrawArrays(GL10.GL_POINTS, 0, 1000)
+      }
+
+//      gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
+//      gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
+//      gl.glDisableClientState(GL10.GL_COLOR_ARRAY)
+      
+      val elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
+    
+      Model.particleSystems.par.foreach{ system =>
+        system.run(elapsedTime)
+      }
+      Model.particleSystems.foreach{ system =>
+        if (system.isDone) {
+          Model.particleSystems -= system
+        }
+      }
     }
-
-    gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
-    gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
-    gl.glEnableClientState(GL10.GL_COLOR_ARRAY)
     
-    gl.glVertexPointer(2, GL10.GL_FLOAT, 0, vertexArray)
-    gl.glColorPointer(4, GL10.GL_FLOAT, 0, colorArray)
-    gl.asInstanceOf[GL11].glPointSizePointerOES(GL10.GL_FLOAT, 0, sizeArray)
-    gl.glDrawArrays(GL10.GL_POINTS, 0, 500)
-
-    gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
-    gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
-    gl.glDisableClientState(GL10.GL_COLOR_ARRAY)
     
-    val elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
-    
-    Model.particleSystem.run(elapsedTime)
   }
 
   def onSurfaceChanged(gl: GL10, width: Int, height: Int) {
-    gl.glViewport(0, 0, width, height); //Reset The Current Viewport
+    GLES20.glViewport(0, 0, width, height); //Reset The Current Viewport
     gl.glMatrixMode(GL10.GL_PROJECTION); //Select The Projection Matrix
     gl.glLoadIdentity(); //Reset The Projection Matrix
 
