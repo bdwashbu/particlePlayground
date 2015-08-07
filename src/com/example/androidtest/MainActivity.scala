@@ -135,23 +135,51 @@ case class ParticleSystem(numParticles: Int) {
   var vertexHandle = Array(1)
   var sizeHandle = Array(1)
   var colorHandle = Array(1)
+  var indexHandle = Array(1)
   
-    val vbb = ByteBuffer.allocateDirect(numParticles * 2 * 4)
-    vbb.order(ByteOrder.nativeOrder()) // Use native byte order
-    val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
+  val vbb = ByteBuffer.allocateDirect(numParticles * 2 * 4)
+  vbb.order(ByteOrder.nativeOrder()) // Use native byte order
+  val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
+  
+  val sizebb = ByteBuffer.allocateDirect(numParticles * 4)
+  sizebb.order(ByteOrder.nativeOrder()) // Use native byte order
+  val sizeBuffer = sizebb.asFloatBuffer() // Convert from byte to float
+  
+  val colorbb = ByteBuffer.allocateDirect(numParticles * 4 * 4)
+  colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
+  val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
+  var indices = Array[Short]()
+  var vertices = Array[Float]()
+  var vertexBufferTri: FloatBuffer = null
+  var drawListBuffer: ShortBuffer = null
+  
+  def init = {
+    GLES20.glGenBuffers(1, vertexHandle, 0)
+    GLES20.glGenBuffers(1, sizeHandle, 0)
+    GLES20.glGenBuffers(1, colorHandle, 0)
+    GLES20.glGenBuffers(1, indexHandle, 0)
     
-    val sizebb = ByteBuffer.allocateDirect(numParticles * 4)
-    sizebb.order(ByteOrder.nativeOrder()) // Use native byte order
-    val sizeBuffer = sizebb.asFloatBuffer() // Convert from byte to float
+    SetupTriangle
     
-    val colorbb = ByteBuffer.allocateDirect(numParticles * 4 * 4)
-    colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
-    val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  6 * 4, vertexBufferTri, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
     
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
     
-    // Geometric variables
-    var vertices = Array[Float]()
-    var vertexBufferTri: FloatBuffer = null
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, indexHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  3 * 2, drawListBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    isInit = true
+  }
+  
+  
   
   def SetupTriangle = {
         // We have create the vertices of our view.
@@ -160,34 +188,22 @@ case class ParticleSystem(numParticles: Int) {
                     10.0f, 100f, 
                     100f, 100f)
 
+        indices = Array[Short](0, 1, 2)
+                    
         // The vertex buffer.
         val bb = ByteBuffer.allocateDirect(vertices.length * 4);
         bb.order(ByteOrder.nativeOrder());
         vertexBufferTri = bb.asFloatBuffer();
         vertexBufferTri.put(vertices);
         vertexBufferTri.position(0);
+        
+        val dlb = ByteBuffer.allocateDirect(indices.length * 2);
+        dlb.order(ByteOrder.nativeOrder());
+        drawListBuffer = dlb.asShortBuffer();
+        drawListBuffer.put(indices);
+        drawListBuffer.position(0);
  
     }
-  
-  def init = {
-    SetupTriangle
-//    GLES20.glGenBuffers(1, vertexHandle, 0)
-//    GLES20.glGenBuffers(1, sizeHandle, 0)
-//    GLES20.glGenBuffers(1, colorHandle, 0)
-//    
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-//    
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-//    
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-    isInit = true
-  }
   
   def draw(gl: GL10, program: Int) = {
       getVertexArray
@@ -217,16 +233,18 @@ case class ParticleSystem(numParticles: Int) {
     val mPositionHandle = GLES20.glGetAttribLocation(Shaders.program, "vPosition");
  
       // Enable generic vertex attribute array
+      
+      GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
       GLES20.glEnableVertexAttribArray(mPositionHandle);
- 
-      // Prepare the triangle coordinate data
       GLES20.glVertexAttribPointer(mPositionHandle, 2,
                                      GLES20.GL_FLOAT, false,
-                                     0, vertexBuffer);
+                                     0, 0);
  
         
  
-      gl.glDrawArrays(GLES20.GL_POINTS, 0, numParticles)
+      GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, indexHandle(0));
+      GLES20.glDrawElements(GLES20.GL_TRIANGLES, indices.length,
+                GLES20.GL_UNSIGNED_SHORT, 0);
 
       // Disable vertex array
       GLES20.glDisableVertexAttribArray(mPositionHandle);
