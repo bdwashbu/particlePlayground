@@ -66,7 +66,7 @@ object Shaders {
   val fragmentSource = """
         precision mediump float;
         void main() {
-          gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);
+          gl_FragColor = vec4(0.0, 1.0, 1.0, 1.0);
         }"""
   
   var program = 0
@@ -148,51 +148,88 @@ case class ParticleSystem(numParticles: Int) {
     colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
     val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
     
+    
+    // Geometric variables
+    var vertices = Array[Float]()
+    var vertexBufferTri: FloatBuffer = null
+  
+  def SetupTriangle = {
+        // We have create the vertices of our view.
+        vertices = Array(
+                   10.0f, 200f, 
+                    10.0f, 100f, 
+                    100f, 100f)
+
+        // The vertex buffer.
+        val bb = ByteBuffer.allocateDirect(vertices.length * 4);
+        bb.order(ByteOrder.nativeOrder());
+        vertexBufferTri = bb.asFloatBuffer();
+        vertexBufferTri.put(vertices);
+        vertexBufferTri.position(0);
+ 
+    }
   
   def init = {
-
-    GLES20.glGenBuffers(1, vertexHandle, 0)
-    GLES20.glGenBuffers(1, sizeHandle, 0)
-    GLES20.glGenBuffers(1, colorHandle, 0)
-    
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-    
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-    
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    SetupTriangle
+//    GLES20.glGenBuffers(1, vertexHandle, 0)
+//    GLES20.glGenBuffers(1, sizeHandle, 0)
+//    GLES20.glGenBuffers(1, colorHandle, 0)
+//    
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+//    
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+//    
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+//    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
     isInit = true
   }
   
   def draw(gl: GL10, program: Int) = {
-    getVertexArray
-    getSizeArray
+//    getVertexArray
+//    getSizeArray
+//    
+//    val vertexPositionAttribute = GLES20.glGetAttribLocation(program, "vertexPosition");
+//    //Log.e("com.example.androidtest", s"vertexPosition: $vertexPositionAttribute");
+//    GLES20.glEnableVertexAttribArray(vertexPositionAttribute);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+//    GLES20.glVertexAttribPointer(vertexPositionAttribute, 2, GLES20.GL_FLOAT, false, 0, 0);
+//
+//    val sizeAttribute = GLES20.glGetAttribLocation(program, "pointSize");
+//    //Log.e("com.example.androidtest", s"pointSize: $sizeAttribute");
+//    GLES20.glEnableVertexAttribArray(sizeAttribute);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+//    GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 0, 0);
+//    
+////    val colorAttribute = GLES20.glGetAttribLocation(program, "color");
+////    Log.e("com.example.androidtest", s"color: $colorAttribute");
+////    GLES20.glEnableVertexAttribArray(colorAttribute);
+////    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+////    GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 0, 0);
+//    
+//
+//    gl.glDrawArrays(GLES20.GL_POINTS, 0, 1000)
     
-    val vertexPositionAttribute = GLES20.glGetAttribLocation(program, "vertexPosition");
-    //Log.e("com.example.androidtest", s"vertexPosition: $vertexPositionAttribute");
-    GLES20.glEnableVertexAttribArray(vertexPositionAttribute);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-    GLES20.glVertexAttribPointer(vertexPositionAttribute, 2, GLES20.GL_FLOAT, false, 0, 0);
+    val mPositionHandle = GLES20.glGetAttribLocation(Shaders.program, "vPosition");
+ 
+      // Enable generic vertex attribute array
+      GLES20.glEnableVertexAttribArray(mPositionHandle);
+ 
+      // Prepare the triangle coordinate data
+      GLES20.glVertexAttribPointer(mPositionHandle, 2,
+                                     GLES20.GL_FLOAT, false,
+                                     0, vertexBufferTri);
+ 
+        
+ 
+      gl.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3)
 
-    val sizeAttribute = GLES20.glGetAttribLocation(program, "pointSize");
-    //Log.e("com.example.androidtest", s"pointSize: $sizeAttribute");
-    GLES20.glEnableVertexAttribArray(sizeAttribute);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-    GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 0, 0);
-    
-//    val colorAttribute = GLES20.glGetAttribLocation(program, "color");
-//    Log.e("com.example.androidtest", s"color: $colorAttribute");
-//    GLES20.glEnableVertexAttribArray(colorAttribute);
-//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-//    GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 0, 0);
-    
-
-    gl.glDrawArrays(GLES20.GL_POINTS, 0, 1000)
+      // Disable vertex array
+      GLES20.glDisableVertexAttribArray(mPositionHandle);
   }
   
   abstract case class Particle(var x: Double,
@@ -413,25 +450,7 @@ class OpenGLRenderer extends Renderer {
 
   var mtrxProjectionAndView = Array.fill(16)(0.0f)
   
-  // Geometric variables
-    var vertices = Array[Float]()
-    var vertexBuffer: FloatBuffer = null
   
-  def SetupTriangle = {
-        // We have create the vertices of our view.
-        vertices = Array(
-                   10.0f, 200f, 
-                    10.0f, 100f, 
-                    100f, 100f)
-
-        // The vertex buffer.
-        val bb = ByteBuffer.allocateDirect(vertices.length * 4);
-        bb.order(ByteOrder.nativeOrder());
-        vertexBuffer = bb.asFloatBuffer();
-        vertexBuffer.put(vertices);
-        vertexBuffer.position(0);
- 
-    }
   
   def onSurfaceCreated(gl: GL10, config: EGLConfig) {
     //gl.glShadeModel(GL10.GL_SMOOTH); //Enable Smooth Shading
@@ -452,7 +471,6 @@ class OpenGLRenderer extends Renderer {
     Shaders.program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
     GLES20.glUseProgram(Shaders.program)
     Log.e("com.example.androidtest", "2done compiling shader");
-    SetupTriangle
   }
 
   
@@ -471,22 +489,7 @@ class OpenGLRenderer extends Renderer {
     Model synchronized {
       
       
-      val mPositionHandle = GLES20.glGetAttribLocation(Shaders.program, "vPosition");
- 
-      // Enable generic vertex attribute array
-      GLES20.glEnableVertexAttribArray(mPositionHandle);
- 
-      // Prepare the triangle coordinate data
-      GLES20.glVertexAttribPointer(mPositionHandle, 2,
-                                     GLES20.GL_FLOAT, false,
-                                     0, vertexBuffer);
- 
-        
- 
-      gl.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3)
-
-      // Disable vertex array
-      GLES20.glDisableVertexAttribArray(mPositionHandle);
+      
       
       
       
@@ -494,7 +497,7 @@ class OpenGLRenderer extends Renderer {
         if (!system.isInit) {
           system.init
         }
-        //system.draw(gl, Shaders.program)
+        system.draw(gl, Shaders.program)
       }
 
       val elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
