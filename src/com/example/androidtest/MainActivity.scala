@@ -138,28 +138,18 @@ case class ParticleSystem(numParticles: Int) {
   
   var isInit = false;
   var vertexHandle = Array(1)
-  var sizeHandle = Array(1)
-  var colorHandle = Array(1)
   
-  val vbb = ByteBuffer.allocateDirect(numParticles * 2 * 4)
+  val vbb = ByteBuffer.allocateDirect(numParticles * 7 * 4)
   vbb.order(ByteOrder.nativeOrder()) // Use native byte order
   val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
   
-  val sizebb = ByteBuffer.allocateDirect(numParticles * 4)
-  sizebb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val sizeBuffer = sizebb.asFloatBuffer() // Convert from byte to float
-  
-  val colorbb = ByteBuffer.allocateDirect(numParticles * 4 * 4)
-  colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
   var colorAttribute = 0
   var mPositionHandle = 0
   var sizeAttribute = 0
   
   def init = {
     GLES20.glGenBuffers(1, vertexHandle, 0)
-    GLES20.glGenBuffers(1, sizeHandle, 0)
-    GLES20.glGenBuffers(1, colorHandle, 0)
+
     colorAttribute = GLES20.glGetAttribLocation(Shaders.program, "vColor");
     mPositionHandle = GLES20.glGetAttribLocation(Shaders.program, "vPosition");
     sizeAttribute = GLES20.glGetAttribLocation(Shaders.program, "pointSize");
@@ -167,29 +157,25 @@ case class ParticleSystem(numParticles: Int) {
   }
 
   def draw(gl: GL10, program: Int) = {
-     getVertexArray
-     getSizeArray
-     getColorArray
+     getInterleaved
      
+     GLES20.glEnableVertexAttribArray(mPositionHandle);
      GLES20.glEnableVertexAttribArray(colorAttribute);
-     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
-     GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 0, 0);
+     GLES20.glEnableVertexAttribArray(sizeAttribute);
       
      GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
-     GLES20.glEnableVertexAttribArray(mPositionHandle);
-     GLES20.glVertexAttribPointer(mPositionHandle, 2, GLES20.GL_FLOAT, false, 0, 0);
-      
-     GLES20.glEnableVertexAttribArray(sizeAttribute);
-     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
-     GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 0, 0);
+     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 7 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
+    
+     GLES20.glVertexAttribPointer(mPositionHandle, 2, GLES20.GL_FLOAT, false, 28, 0);
+     GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 28, 8);
+     GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 28, 24);
       
      gl.glDrawArrays(GLES20.GL_POINTS, 0, numParticles)
 
      // Disable vertex array
      GLES20.glDisableVertexAttribArray(mPositionHandle);
+     GLES20.glDisableVertexAttribArray(colorAttribute);
+     GLES20.glDisableVertexAttribArray(sizeAttribute);
   }
   
   abstract case class Particle(var x: Double,
@@ -307,27 +293,38 @@ case class ParticleSystem(numParticles: Int) {
     particles.forall(particle => particle.currentLife <= 0.0)
   }
   
-  def getVertexArray = {
+  def getInterleaved = {
       vertexBuffer.position(0)
-      vertexBuffer.put(particles.flatMap{particle => List(particle.x.toFloat, particle.y.toFloat)}.toArray) // Copy data into buffer
+      vertexBuffer.put(particles.flatMap{ particle => List(
+        // X, Y, R, G, B, A, Size
+        particle.x.toFloat, particle.y.toFloat,
+        1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat,
+        particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat)
+      }.toArray) // Copy data into buffer
       vertexBuffer.position(0) // Rewind
   }
   
-  def getColorArray: FloatBuffer = {
-      colorBuffer.clear
-      colorBuffer.put(particles.flatMap { particle => 
-        List(1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat)
-      }.toArray) // Copy data into buffer
-      colorBuffer.position(0) // Rewind
-      colorBuffer
-  }
-  
-  def getSizeArray: FloatBuffer = {
-      sizeBuffer.clear
-      sizeBuffer.put(particles.map{particle => particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat}.toArray) // Copy data into buffer
-      sizeBuffer.position(0) // Rewind
-      sizeBuffer
-  }
+//  def getVertexArray = {
+//      vertexBuffer.position(0)
+//      vertexBuffer.put(particles.flatMap{particle => List(particle.x.toFloat, particle.y.toFloat)}.toArray) // Copy data into buffer
+//      vertexBuffer.position(0) // Rewind
+//  }
+//  
+//  def getColorArray: FloatBuffer = {
+//      colorBuffer.clear
+//      colorBuffer.put(particles.flatMap { particle => 
+//        List(1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat)
+//      }.toArray) // Copy data into buffer
+//      colorBuffer.position(0) // Rewind
+//      colorBuffer
+//  }
+//  
+//  def getSizeArray: FloatBuffer = {
+//      sizeBuffer.clear
+//      sizeBuffer.put(particles.map{particle => particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat}.toArray) // Copy data into buffer
+//      sizeBuffer.position(0) // Rewind
+//      sizeBuffer
+//  }
   
   
 }
