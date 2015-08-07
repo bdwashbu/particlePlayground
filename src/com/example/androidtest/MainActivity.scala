@@ -54,20 +54,19 @@ object Force {
 object Shaders {
   
   val vertexSource = """
-        attribute vec4 vertexPosition;
-        uniform mat4 mvp;
+        uniform    mat4 uMVPMatrix;
+        attribute  vec4 vPosition;
         attribute float pointSize;
         
         void main() {
-          gl_Position = mvp * vertexPosition;
+          gl_Position = uMVPMatrix * vPosition;
           gl_PointSize = pointSize;
         }"""
 
   val fragmentSource = """
         precision mediump float;
-        uniform vec4 color;
         void main() {
-          gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0);
+          gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);
         }"""
   
   var program = 0
@@ -132,56 +131,68 @@ object Model {
 
 case class ParticleSystem(numParticles: Int) {
   
-  val vbb = ByteBuffer.allocateDirect(numParticles * 2 * 4)
-  vbb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
+  var isInit = false;
+  var vertexHandle = Array(1)
+  var sizeHandle = Array(1)
+  var colorHandle = Array(1)
   
-  val sizebb = ByteBuffer.allocateDirect(numParticles * 4)
-  sizebb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val sizeBuffer = sizebb.asFloatBuffer() // Convert from byte to float
+    val vbb = ByteBuffer.allocateDirect(numParticles * 2 * 4)
+    vbb.order(ByteOrder.nativeOrder()) // Use native byte order
+    val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
+    
+    val sizebb = ByteBuffer.allocateDirect(numParticles * 4)
+    sizebb.order(ByteOrder.nativeOrder()) // Use native byte order
+    val sizeBuffer = sizebb.asFloatBuffer() // Convert from byte to float
+    
+    val colorbb = ByteBuffer.allocateDirect(numParticles * 4 * 4)
+    colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
+    val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
+    
   
-  val colorbb = ByteBuffer.allocateDirect(numParticles * 4 * 4)
-  colorbb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val colorBuffer = colorbb.asFloatBuffer() // Convert from byte to float
-  
-  val vertexHandle = Array(1)
-  val sizeHandle = Array(1)
-  val colorHandle = Array(1)
-  
-  GLES20.glGenBuffers(1, vertexHandle, 0)
-  GLES20.glGenBuffers(1, sizeHandle, 0)
-  GLES20.glGenBuffers(1, colorHandle, 0)
-  
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-  
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-  
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-  GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
-  GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+  def init = {
+
+    GLES20.glGenBuffers(1, vertexHandle, 0)
+    GLES20.glGenBuffers(1, sizeHandle, 0)
+    GLES20.glGenBuffers(1, colorHandle, 0)
+    
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 2 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 1 * 4, sizeBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 4 * 4, colorBuffer, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    isInit = true
+  }
   
   def draw(gl: GL10, program: Int) = {
+    getVertexArray
+    getSizeArray
+    
     val vertexPositionAttribute = GLES20.glGetAttribLocation(program, "vertexPosition");
+    //Log.e("com.example.androidtest", s"vertexPosition: $vertexPositionAttribute");
     GLES20.glEnableVertexAttribArray(vertexPositionAttribute);
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-    GLES20.glVertexAttribPointer(vertexPositionAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+    GLES20.glVertexAttribPointer(vertexPositionAttribute, 2, GLES20.GL_FLOAT, false, 0, 0);
 
     val sizeAttribute = GLES20.glGetAttribLocation(program, "pointSize");
+    //Log.e("com.example.androidtest", s"pointSize: $sizeAttribute");
     GLES20.glEnableVertexAttribArray(sizeAttribute);
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sizeHandle(0));
-    GLES20.glVertexAttribPointer(sizeAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+    GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 0, 0);
     
-    val colorAttribute = GLES20.glGetAttribLocation(program, "color");
-    GLES20.glEnableVertexAttribArray(colorAttribute);
-    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
-    GLES20.glVertexAttribPointer(colorAttribute, numParticles, GLES20.GL_FLOAT, false, 0, 0);
+//    val colorAttribute = GLES20.glGetAttribLocation(program, "color");
+//    Log.e("com.example.androidtest", s"color: $colorAttribute");
+//    GLES20.glEnableVertexAttribArray(colorAttribute);
+//    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, colorHandle(0));
+//    GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 0, 0);
     
 
-    gl.glDrawArrays(GL10.GL_POINTS, 0, 1000)
+    gl.glDrawArrays(GLES20.GL_POINTS, 0, 1000)
   }
   
   abstract case class Particle(var x: Double,
@@ -375,8 +386,6 @@ class MainScala extends Activity with SensorEventListener {
   override def onCreate(savedInstanceState: Bundle) = {
     super.onCreate(savedInstanceState)
     
-    
-    
     this.requestWindowFeature(Window.FEATURE_NO_TITLE)
     getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
     val view = new GLSurfaceView(this)
@@ -389,7 +398,6 @@ class MainScala extends Activity with SensorEventListener {
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED)
     
-    Log.e("com.example.androidtest", "done setting content");
     val displaymetrics = new DisplayMetrics();
     getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
     Screen.height = displaymetrics.heightPixels;
@@ -403,7 +411,27 @@ class MainScala extends Activity with SensorEventListener {
 
 class OpenGLRenderer extends Renderer {
 
+  var mtrxProjectionAndView = Array.fill(16)(0.0f)
   
+  // Geometric variables
+    var vertices = Array[Float]()
+    var vertexBuffer: FloatBuffer = null
+  
+  def SetupTriangle = {
+        // We have create the vertices of our view.
+        vertices = Array(
+                   10.0f, 200f, 
+                    10.0f, 100f, 
+                    100f, 100f)
+
+        // The vertex buffer.
+        val bb = ByteBuffer.allocateDirect(vertices.length * 4);
+        bb.order(ByteOrder.nativeOrder());
+        vertexBuffer = bb.asFloatBuffer();
+        vertexBuffer.put(vertices);
+        vertexBuffer.position(0);
+ 
+    }
   
   def onSurfaceCreated(gl: GL10, config: EGLConfig) {
     //gl.glShadeModel(GL10.GL_SMOOTH); //Enable Smooth Shading
@@ -424,6 +452,7 @@ class OpenGLRenderer extends Renderer {
     Shaders.program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
     GLES20.glUseProgram(Shaders.program)
     Log.e("com.example.androidtest", "2done compiling shader");
+    SetupTriangle
   }
 
   
@@ -433,17 +462,41 @@ class OpenGLRenderer extends Renderer {
     val startTime = SystemClock.elapsedRealtime
     
     GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+  // Get handle to shape's transformation matrix
+    val mtrxhandle = GLES20.glGetUniformLocation(Shaders.program, "uMVPMatrix");
+ 
+        // Apply the projection and view transformation
+    GLES20.glUniformMatrix4fv(mtrxhandle, 1, false, mtrxProjectionAndView, 0);
 
     Model synchronized {
       
       
-      
-      Model.particleSystems.foreach(_.draw(gl, Shaders.program))
+      val mPositionHandle = GLES20.glGetAttribLocation(Shaders.program, "vPosition");
+ 
+      // Enable generic vertex attribute array
+      GLES20.glEnableVertexAttribArray(mPositionHandle);
+ 
+      // Prepare the triangle coordinate data
+      GLES20.glVertexAttribPointer(mPositionHandle, 2,
+                                     GLES20.GL_FLOAT, false,
+                                     0, vertexBuffer);
+ 
+        
+ 
+      gl.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3)
 
-//      gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES)
-//      gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
-//      gl.glDisableClientState(GL10.GL_COLOR_ARRAY)
+      // Disable vertex array
+      GLES20.glDisableVertexAttribArray(mPositionHandle);
       
+      
+      
+      Model.particleSystems.foreach{ system =>
+        if (!system.isInit) {
+          system.init
+        }
+        //system.draw(gl, Shaders.program)
+      }
+
       val elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
     
       Model.particleSystems.par.foreach{ system =>
@@ -454,22 +507,39 @@ class OpenGLRenderer extends Renderer {
           Model.particleSystems -= system
         }
       }
-    }
-    
-    
+    }      
   }
 
   def onSurfaceChanged(gl: GL10, width: Int, height: Int) {
-    GLES20.glViewport(0, 0, width, height); //Reset The Current Viewport
-    
-    val projection = Array.fill(16)(0.0f);
-
-    Matrix.setIdentityM(projection, 0);
-    
-    val mvp = GLES20.glGetUniformLocation(Shaders.program, "mvp");
-
-    Matrix.orthoM(projection, 0, -width / 2, width / 2, -height / 2, height / 2, -1, 1);
-    GLES20.glUniformMatrix4fv(mvp, 1, false, projection, 0);
+    // We need to know the current width and height.
+        Screen.width = width;
+        Screen.height = height;
+ 
+        // Redo the Viewport, making it fullscreen.
+        GLES20.glViewport(0, 0, Screen.width, Screen.height);
+        
+        val mtrxProjection = Array.fill(16)(0.0f)
+        val mtrxView = Array.fill(16)(0.0f)
+        
+ 
+        // Clear our matrices
+        for(i <- (0 until 16))
+        {
+            mtrxProjection(i) = 0.0f
+            mtrxView(i) = 0.0f
+            mtrxProjectionAndView(i) = 0.0f
+        }
+ 
+        // Setup our screen width and height for normal sprite translation.
+        Matrix.orthoM(mtrxProjection, 0, 0f, width, 0.0f, height, 0, 50);
+ 
+        // Set the camera position (View matrix)
+        Matrix.setLookAtM(mtrxView, 0, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
+ 
+        // Calculate the projection and view transformation
+        Matrix.multiplyMM(mtrxProjectionAndView, 0, mtrxProjection, 0, mtrxView, 0);
+        
+        
   }
 
 }
