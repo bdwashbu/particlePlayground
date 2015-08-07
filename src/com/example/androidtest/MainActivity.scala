@@ -190,7 +190,7 @@ case class ParticleSystem(numParticles: Int) {
   }
   
   def draw(gl: GL10, program: Int) = {
-//    getVertexArray
+      getVertexArray
 //    getSizeArray
 //    
 //    val vertexPositionAttribute = GLES20.glGetAttribLocation(program, "vertexPosition");
@@ -222,11 +222,11 @@ case class ParticleSystem(numParticles: Int) {
       // Prepare the triangle coordinate data
       GLES20.glVertexAttribPointer(mPositionHandle, 2,
                                      GLES20.GL_FLOAT, false,
-                                     0, vertexBufferTri);
+                                     0, vertexBuffer);
  
         
  
-      gl.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3)
+      gl.glDrawArrays(GLES20.GL_POINTS, 0, numParticles)
 
       // Disable vertex array
       GLES20.glDisableVertexAttribArray(mPositionHandle);
@@ -487,11 +487,6 @@ class OpenGLRenderer extends Renderer {
     GLES20.glUniformMatrix4fv(mtrxhandle, 1, false, mtrxProjectionAndView, 0);
 
     Model synchronized {
-      
-      
-      
-      
-      
       
       Model.particleSystems.foreach{ system =>
         if (!system.isInit) {
