@@ -35,6 +35,7 @@ import android.hardware.SensorEvent
 import android.content.Context
 import android.hardware.SensorManager
 import android.opengl.GLES20
+import android.opengl.GLES30
 import android.opengl.Matrix
 
 object Screen {
@@ -146,6 +147,7 @@ case class ParticleSystem(numParticles: Int) {
   var colorAttribute = 0
   var mPositionHandle = 0
   var sizeAttribute = 0
+  var fence: Int = 0
   
   def init = {
     GLES20.glGenBuffers(1, vertexHandle, 0)
@@ -164,8 +166,16 @@ case class ParticleSystem(numParticles: Int) {
      GLES20.glEnableVertexAttribArray(sizeAttribute);
       
      GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 7 * 4, vertexBuffer, GLES20.GL_DYNAMIC_DRAW);
-    
+     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 7 * 4, null, GLES20.GL_DYNAMIC_DRAW);
+     val buffer = GLES30.glMapBufferRange(GLES20.GL_ARRAY_BUFFER, 0, numParticles * 7 * 4, GLES30.GL_MAP_WRITE_BIT | GLES30.GL_MAP_FLUSH_EXPLICIT_BIT |
+        GLES30.GL_MAP_UNSYNCHRONIZED_BIT).asInstanceOf[ByteBuffer].order(ByteOrder.nativeOrder).asFloatBuffer()
+     //GLES30.glClientWaitSync(fence, GLES30.GL_SYNC_FLUSH_COMMANDS_BIT, GLES30.GL_TIMEOUT_IGNORED);
+//     buffer.order(ByteOrder.nativeOrder())
+//     val byteBuffer = ByteBuffer.allocate(numParticles * 7 * 4);
+//     byteBuffer.asFloatBuffer().put(vertexBuffer);
+     buffer.put(vertexBuffer).position (0)
+     //GLES30.glFlushMappedBufferRange(GLES20.GL_ARRAY_BUFFER, 0, numParticles * 7 * 4)
+     GLES30.glUnmapBuffer(GLES20.GL_ARRAY_BUFFER)
      GLES20.glVertexAttribPointer(mPositionHandle, 2, GLES20.GL_FLOAT, false, 28, 0);
      GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 28, 8);
      GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 28, 24);
@@ -176,6 +186,9 @@ case class ParticleSystem(numParticles: Int) {
      GLES20.glDisableVertexAttribArray(mPositionHandle);
      GLES20.glDisableVertexAttribArray(colorAttribute);
      GLES20.glDisableVertexAttribArray(sizeAttribute);
+     
+    // val x = GLES30.glFenceSync(GLES30.GL_SYNC_GPU_COMMANDS_COMPLETE.toInt, 0.toInt)
+     
   }
   
   abstract case class Particle(var x: Double,
@@ -384,7 +397,7 @@ class MainScala extends Activity with SensorEventListener {
     val view = new GLSurfaceView(this)
     view.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
     val renderer = new OpenGLRenderer()
-    view.setEGLContextClientVersion(2) // assume Opengl 2.0
+    view.setEGLContextClientVersion(3)
     view.setRenderer(renderer)
     
     setContentView(view);
