@@ -35,6 +35,7 @@ class OpenGLRenderer extends Renderer {
   }
 
   var elapsedTime = 0.0
+  val systemsToErase = ListBuffer[ParticleSystem]()
 
   def onDrawFrame(gl: GL10) = {
 
@@ -48,24 +49,20 @@ class OpenGLRenderer extends Renderer {
     GLES20.glUniformMatrix4fv(mtrxhandle, 1, false, mtrxProjectionAndView, 0);
 
     if (Flags.startNewSystem) {
-      val newSystem = ParticleSystem(1000)
-      Model.particleSystems += newSystem
-      newSystem.freeFall(Flags.newSystemX, Flags.newSystemY)
+      Model.particleSystems += Flags.newSystem
       Flags.startNewSystem = false
     }
 
     var index = 0
     val numSystems = Model.particleSystems.size
-    val systemsToErase = ListBuffer[ParticleSystem]()
+    
 
     while (index < numSystems) {
       val system = Model.particleSystems(index)
       if (!system.isInit) {
         system.init
       }
-      system.draw(gl, Shaders.program)
-
-      system.run(elapsedTime)
+      system.draw(gl, Shaders.program, elapsedTime)
 
       if (system.isDone) {
         systemsToErase += system
@@ -79,6 +76,7 @@ class OpenGLRenderer extends Renderer {
       Model.particleSystems -= systemsToErase(index)
       index += 1
     }
+    systemsToErase.clear
 
     elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
   }

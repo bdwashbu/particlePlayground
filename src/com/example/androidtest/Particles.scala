@@ -7,21 +7,29 @@ import scala.collection.mutable.ListBuffer
 import android.opengl.GLES30
 import java.nio.ByteOrder
 import javax.microedition.khronos.opengles.GL10
+import java.nio.FloatBuffer
 
 case class ParticleSystem(numParticles: Int) {
   
   var isInit = false;
   var vertexHandle = Array(1)
   
-  val vbb = ByteBuffer.allocateDirect(numParticles * 7 * 4)
-  vbb.order(ByteOrder.nativeOrder()) // Use native byte order
-  val vertexBuffer = vbb.asFloatBuffer() // Convert from byte to float
+  val numBatches = 10
+  val particlesPerBatch = numParticles / numBatches
+  
+  val vbos = ListBuffer[FloatBuffer]()
+  
+  for (i <- 0 until numBatches) {
+    val vbb = ByteBuffer.allocateDirect(particlesPerBatch * 7 * 4)
+    vbb.order(ByteOrder.nativeOrder()) // Use native byte order
+    vbos += vbb.asFloatBuffer() // Convert from byte to float
+  }
   
   var colorAttribute = 0
   var mPositionHandle = 0
   var sizeAttribute = 0
   var fence: Int = 0
-  var isDone = false
+  var isSystemDone = false
   
   def init = {
     GLES20.glGenBuffers(1, vertexHandle, 0)
@@ -32,34 +40,54 @@ case class ParticleSystem(numParticles: Int) {
     isInit = true
   }
 
-  def draw(gl: GL10, program: Int) = {
-     GLES20.glEnableVertexAttribArray(mPositionHandle);
-     GLES20.glEnableVertexAttribArray(colorAttribute);
-     GLES20.glEnableVertexAttribArray(sizeAttribute);
-      
-     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
-     GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 7 * 4, null, GLES20.GL_DYNAMIC_DRAW);
-     val buffer = GLES30.glMapBufferRange(GLES20.GL_ARRAY_BUFFER, 0, numParticles * 7 * 4, GLES30.GL_MAP_WRITE_BIT | GLES30.GL_MAP_FLUSH_EXPLICIT_BIT |
-        GLES30.GL_MAP_UNSYNCHRONIZED_BIT).asInstanceOf[ByteBuffer].order(ByteOrder.nativeOrder).asFloatBuffer()
-     //GLES30.glClientWaitSync(fence, GLES30.GL_SYNC_FLUSH_COMMANDS_BIT, GLES30.GL_TIMEOUT_IGNORED);
-//     buffer.order(ByteOrder.nativeOrder())
-//     val byteBuffer = ByteBuffer.allocate(numParticles * 7 * 4);
-//     byteBuffer.asFloatBuffer().put(vertexBuffer);
-     buffer.put(vertexBuffer).position (0)
-     //GLES30.glFlushMappedBufferRange(GLES20.GL_ARRAY_BUFFER, 0, numParticles * 7 * 4)
-     GLES30.glUnmapBuffer(GLES20.GL_ARRAY_BUFFER)
+  def draw(gl: GL10, program: Int, elapsedTime: Double) = {
+    
+    var index = 0
+    
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,  numParticles * 7 * 4, null, GLES20.GL_DYNAMIC_DRAW);
+    
      GLES20.glVertexAttribPointer(mPositionHandle, 2, GLES20.GL_FLOAT, false, 28, 0);
-     GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 28, 8);
-     GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 28, 24);
+       GLES20.glVertexAttribPointer(colorAttribute, 4, GLES20.GL_FLOAT, false, 28, 8);
+       GLES20.glVertexAttribPointer(sizeAttribute, 1, GLES20.GL_FLOAT, false, 28, 24);
+    GLES20.glEnableVertexAttribArray(mPositionHandle);
+       GLES20.glEnableVertexAttribArray(colorAttribute);
+       GLES20.glEnableVertexAttribArray(sizeAttribute);
+       
+       GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexHandle(0));
+       
+    while (index < numBatches) {
+      val offset = numParticles / numBatches * index * 7 * 4
+    
+       
+        
+       
+       
+       val buffer = GLES30.glMapBufferRange(GLES20.GL_ARRAY_BUFFER, offset, particlesPerBatch * 7 * 4, GLES30.GL_MAP_WRITE_BIT | GLES30.GL_MAP_UNSYNCHRONIZED_BIT).asInstanceOf[ByteBuffer].order(ByteOrder.nativeOrder).asFloatBuffer()
+       //GLES30.glClientWaitSync(fence, GLES30.GL_SYNC_FLUSH_COMMANDS_BIT, GLES30.GL_TIMEOUT_IGNORED);
+  //     buffer.order(ByteOrder.nativeOrder())
+  //     val byteBuffer = ByteBuffer.allocate(numParticles * 7 * 4);
+  //     byteBuffer.asFloatBuffer().put(vertexBuffer);
+       run(elapsedTime, index)
+       buffer.put(vbos(index)).position (0)
+       //GLES30.glFlushMappedBufferRange(GLES20.GL_ARRAY_BUFFER, 0, numParticles * 7 * 4)
+       GLES30.glUnmapBuffer(GLES20.GL_ARRAY_BUFFER)
+       
       
-     gl.glDrawArrays(GLES20.GL_POINTS, 0, numParticles)
-
-     // Disable vertex array
-     GLES20.glDisableVertexAttribArray(mPositionHandle);
-     GLES20.glDisableVertexAttribArray(colorAttribute);
-     GLES20.glDisableVertexAttribArray(sizeAttribute);
-     
-    // val x = GLES30.glFenceSync(GLES30.GL_SYNC_GPU_COMMANDS_COMPLETE.toInt, 0.toInt)
+        
+       gl.glDrawArrays(GLES20.GL_POINTS, numParticles / numBatches * index, particlesPerBatch)
+  
+       
+       
+       index += 1
+      // val x = GLES30.glFenceSync(GLES30.GL_SYNC_GPU_COMMANDS_COMPLETE.toInt, 0.toInt)
+    }
+    // Disable vertex array
+       GLES20.glDisableVertexAttribArray(mPositionHandle);
+       GLES20.glDisableVertexAttribArray(colorAttribute);
+       GLES20.glDisableVertexAttribArray(sizeAttribute);
+    
+       
      
   }
   
@@ -117,7 +145,7 @@ case class ParticleSystem(numParticles: Int) {
       particles.clear
       for(part <- 0 until numParticles) {
         val rand = new Random()
-        val speed = rand.nextDouble() * 600.0 + 60.0
+        val speed = rand.nextDouble() * 300.0 + 60.0
         val newVelX = rand.nextDouble() * 2.0 - 1.0
         val newVelY = rand.nextDouble() * 2.0 - 1.0
         val dist = math.sqrt(newVelX * newVelX + newVelY * newVelY)
@@ -130,11 +158,13 @@ case class ParticleSystem(numParticles: Int) {
         
         particles += new Particle(x, y, normVelX, normVelY, size, rand.nextDouble(), rand.nextDouble(), rand.nextDouble(), totalLife) {
           def next(particle: Particle, elapsedTime: Double) = {
-            particle.currentLife -= elapsedTime * 1.0
+            particle.currentLife -= elapsedTime * 3.0
             particle.xVel += -Force.gravityX * elapsedTime * 600.0
             particle.yVel += -Force.gravityY * elapsedTime * 600.0
             particle.xVel += -Force.forceX * elapsedTime * 4300.0
             particle.yVel += -Force.forceY * elapsedTime * 4300.0
+            particle.xVel *= 1.0 + 0.1 * elapsedTime
+            particle.yVel *= 1.0 + 0.1 * elapsedTime
           }
           
           def onCollide(particle: Particle, value: Double) = {
@@ -144,53 +174,64 @@ case class ParticleSystem(numParticles: Int) {
       }
   }
   
-   def run(elapsedTime: Double) = {
-      var index = 0
-      var areAllDone = false
+   def run(elapsedTime: Double, index: Int) = {
+      var particleIndex = particlesPerBatch * index
+      var particleCount = 0
     
-      vertexBuffer.position(0)
-      while (index < numParticles) {
-        val particle = particles(index)
-        
-        if (index == 0 && particle.currentLife <= 0.0) {
-          areAllDone = true
+      
+      while (particleCount < particlesPerBatch) {
+        val particle = particles(particleIndex + particleCount)
+        vbos(index).position(particleCount * 7)
+        if (particle.currentLife > 0.0) {
+          var nextX = particle.x + particle.xVel * elapsedTime
+          var nextY = particle.y + particle.yVel * elapsedTime
+          
+          if (nextX < 0.0) {
+            nextX = 0.0
+            particle.xVel = particle.onCollide(particle, particle.xVel)
+          } else if (nextX > Screen.width) {
+            nextX = Screen.width
+            particle.xVel = particle.onCollide(particle, particle.xVel)
+          }
+          
+          if (nextY < 0.0) {
+            nextY = 0.0
+            particle.yVel = particle.onCollide(particle, particle.yVel)
+          } else if (nextY > Screen.height) {
+            nextY = Screen.height
+            particle.yVel = particle.onCollide(particle, particle.yVel)
+          }
+          
+          particle.x += particle.xVel * elapsedTime
+          particle.y += particle.yVel * elapsedTime
+          
+          vbos(index).put(Array(
+              particle.x.toFloat, particle.y.toFloat,
+              particle.red.toFloat, particle.green.toFloat, particle.blue.toFloat, 1.0f,//(particle.currentLife / particle.totalLife).toFloat,
+              particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat
+          ))
+          
+          particle.next(particle, elapsedTime)
         } else {
-          areAllDone &= particle.currentLife <= 0.0
+          vbos(index).position(particleCount * 7 + 5)
+          vbos(index).put(0.0f)
         }
         
-        var nextX = particle.x + particle.xVel * elapsedTime
-        var nextY = particle.y + particle.yVel * elapsedTime
-        
-        if (nextX < 0.0) {
-          nextX = 0.0
-          particle.xVel = particle.onCollide(particle, particle.xVel)
-        } else if (nextX > Screen.width) {
-          nextX = Screen.width
-          particle.xVel = particle.onCollide(particle, particle.xVel)
-        }
-        
-        if (nextY < 0.0) {
-          nextY = 0.0
-          particle.yVel = particle.onCollide(particle, particle.yVel)
-        } else if (nextY > Screen.height) {
-          nextY = Screen.height
-          particle.yVel = particle.onCollide(particle, particle.yVel)
-        }
-        
-        particle.x += particle.xVel * elapsedTime
-        particle.y += particle.yVel * elapsedTime
-        
-        vertexBuffer.put(Array(
-            particle.x.toFloat, particle.y.toFloat,
-            particle.red.toFloat, particle.green.toFloat, particle.blue.toFloat, (particle.currentLife / particle.totalLife).toFloat,
-            particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat
-        ))
-        
-        particle.next(particle, elapsedTime)
-        index += 1
+        particleCount += 1
       }
       
-      vertexBuffer.position(0)
-      isDone = areAllDone
+      vbos(index).position(0)
   }
+   
+   def isDone = {
+     var index = 0
+     
+     var areAllDone = true
+     while (index < numParticles) {
+       areAllDone &= particles(index).currentLife <= 0.0
+       index += 1
+     }
+     
+     areAllDone
+   }
 }
