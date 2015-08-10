@@ -52,6 +52,12 @@ object Force {
   var forceZ = 0.0
 }
 
+object Flags {
+  @volatile var startNewSystem = false
+  var newSystemX = 0.0f
+  var newSystemY = 0.0f
+}
+
 object Shaders {
   
   val vertexSource = """
@@ -148,6 +154,7 @@ case class ParticleSystem(numParticles: Int) {
   var mPositionHandle = 0
   var sizeAttribute = 0
   var fence: Int = 0
+  var isDone = false
   
   def init = {
     GLES20.glGenBuffers(1, vertexHandle, 0)
@@ -159,8 +166,6 @@ case class ParticleSystem(numParticles: Int) {
   }
 
   def draw(gl: GL10, program: Int) = {
-     getInterleaved
-     
      GLES20.glEnableVertexAttribArray(mPositionHandle);
      GLES20.glEnableVertexAttribArray(colorAttribute);
      GLES20.glEnableVertexAttribArray(sizeAttribute);
@@ -206,7 +211,6 @@ case class ParticleSystem(numParticles: Int) {
   var particles = new ListBuffer[Particle]()
   
   def explode(x: Double, y: Double) = {
-    this synchronized {
       particles.clear
       for(part <- 0 until numParticles) {
         val rand = new Random()
@@ -237,15 +241,13 @@ case class ParticleSystem(numParticles: Int) {
           }
         }
       }
-    }
   }
   
   def freeFall(x: Double, y: Double) = {
-    this synchronized {
       particles.clear
       for(part <- 0 until numParticles) {
         val rand = new Random()
-        val speed = rand.nextDouble() * 300.0 + 60.0
+        val speed = rand.nextDouble() * 600.0 + 60.0
         val newVelX = rand.nextDouble() * 2.0 - 1.0
         val newVelY = rand.nextDouble() * 2.0 - 1.0
         val dist = math.sqrt(newVelX * newVelX + newVelY * newVelY)
@@ -270,11 +272,21 @@ case class ParticleSystem(numParticles: Int) {
           }
         }
       }
-    }
   }
   
   def run(elapsedTime: Double) = {
-      particles.foreach { particle =>
+      var index = 0
+      var areAllDone = false
+    
+      vertexBuffer.position(0)
+      while (index < numParticles) {
+        val particle = particles(index)
+        
+        if (index == 0 && particle.currentLife <= 0.0) {
+          areAllDone = true
+        } else {
+          areAllDone &= particle.currentLife <= 0.0
+        }
         
         var nextX = particle.x + particle.xVel * elapsedTime
         var nextY = particle.y + particle.yVel * elapsedTime
@@ -297,49 +309,20 @@ case class ParticleSystem(numParticles: Int) {
         
         particle.x += particle.xVel * elapsedTime
         particle.y += particle.yVel * elapsedTime
-
+        
+        vertexBuffer.put(Array(
+            particle.x.toFloat, particle.y.toFloat,
+            1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat,
+            particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat
+        ))
+        
         particle.next(particle, elapsedTime)
+        index += 1
       }
-  }
-  
-  def isDone = {
-    particles.forall(particle => particle.currentLife <= 0.0)
-  }
-  
-  def getInterleaved = {
+      
       vertexBuffer.position(0)
-      vertexBuffer.put(particles.flatMap{ particle => List(
-        // X, Y, R, G, B, A, Size
-        particle.x.toFloat, particle.y.toFloat,
-        1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat,
-        particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat)
-      }.toArray) // Copy data into buffer
-      vertexBuffer.position(0) // Rewind
+      isDone = areAllDone
   }
-  
-//  def getVertexArray = {
-//      vertexBuffer.position(0)
-//      vertexBuffer.put(particles.flatMap{particle => List(particle.x.toFloat, particle.y.toFloat)}.toArray) // Copy data into buffer
-//      vertexBuffer.position(0) // Rewind
-//  }
-//  
-//  def getColorArray: FloatBuffer = {
-//      colorBuffer.clear
-//      colorBuffer.put(particles.flatMap { particle => 
-//        List(1.0f, 1.0f, 1.0f, (particle.currentLife / particle.totalLife).toFloat)
-//      }.toArray) // Copy data into buffer
-//      colorBuffer.position(0) // Rewind
-//      colorBuffer
-//  }
-//  
-//  def getSizeArray: FloatBuffer = {
-//      sizeBuffer.clear
-//      sizeBuffer.put(particles.map{particle => particle.size.toFloat * (particle.currentLife / particle.totalLife).toFloat}.toArray) // Copy data into buffer
-//      sizeBuffer.position(0) // Rewind
-//      sizeBuffer
-//  }
-  
-  
 }
 
 
@@ -367,13 +350,11 @@ class MainScala extends Activity with SensorEventListener {
         
     action match {
         case (MotionEvent.ACTION_DOWN) =>
-          
+          Flags.startNewSystem = true
+          Flags.newSystemX = event.getX
+          Flags.newSystemY = 1920 - event.getY
             //ParticleSystem.explode(event.getX, 1920 - event.getY)
-          Model synchronized {
-            val newSystem = ParticleSystem(1000)
-            Model.particleSystems += newSystem
-            newSystem.freeFall(event.getX, 1920 - event.getY)
-          }
+          
             true
         case (MotionEvent.ACTION_MOVE) =>
           
@@ -442,7 +423,7 @@ class OpenGLRenderer extends Renderer {
     Log.e("com.example.androidtest", "2done compiling shader");
   }
 
-  
+  var elapsedTime = 0.0
 
   def onDrawFrame(gl: GL10) = {
 
@@ -455,26 +436,40 @@ class OpenGLRenderer extends Renderer {
         // Apply the projection and view transformation
     GLES20.glUniformMatrix4fv(mtrxhandle, 1, false, mtrxProjectionAndView, 0);
 
-    Model synchronized {
-      
-      Model.particleSystems.foreach{ system =>
-        if (!system.isInit) {
-          system.init
-        }
-        system.draw(gl, Shaders.program)
-      }
-
-      val elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
+    if (Flags.startNewSystem) {
+      val newSystem = ParticleSystem(1000)
+      Model.particleSystems += newSystem
+      newSystem.freeFall(Flags.newSystemX, Flags.newSystemY)
+      Flags.startNewSystem = false
+    }
     
-      Model.particleSystems.par.foreach{ system =>
-        system.run(elapsedTime)
+    var index = 0
+    val numSystems = Model.particleSystems.size
+    val systemsToErase = ListBuffer[ParticleSystem]()
+
+    while (index < numSystems) {
+      val system = Model.particleSystems(index)
+      if (!system.isInit) {
+        system.init
       }
-      Model.particleSystems.foreach{ system =>
-        if (system.isDone) {
-          Model.particleSystems -= system
-        }
+      system.draw(gl, Shaders.program)
+      
+      system.run(elapsedTime)
+      
+      if (system.isDone) {
+        systemsToErase += system
       }
-    }      
+      index += 1
+    }   
+    
+    index = 0
+    
+    while (index < systemsToErase.size) {
+      Model.particleSystems -= systemsToErase(index)
+      index += 1
+    }
+    
+    elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
   }
 
   def onSurfaceChanged(gl: GL10, width: Int, height: Int) {
