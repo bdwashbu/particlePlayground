@@ -26,7 +26,7 @@ class OpenGLRenderer extends Renderer {
     //	    gl.glPointSize(15.0f)
     //	    gl.glEnable(GL10.GL_POINT_SMOOTH)
     GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-    GLES20.glEnable(GLES20.GL_BLEND);
+    GLES20.glDisable(GLES20.GL_BLEND);
 
     Log.e("com.example.androidtest", "2compiling shader");
     Shaders.program = ShaderUtils.createProgram(Shaders.vertexSource, Shaders.fragmentSource)
@@ -36,7 +36,7 @@ class OpenGLRenderer extends Renderer {
 
   var elapsedTime = 0.0
   val systemsToErase = ListBuffer[ParticleSystem]()
-
+  var numSystems = 0
   def onDrawFrame(gl: GL10) = {
 
     val startTime = SystemClock.elapsedRealtime
@@ -49,19 +49,17 @@ class OpenGLRenderer extends Renderer {
     GLES20.glUniformMatrix4fv(mtrxhandle, 1, false, mtrxProjectionAndView, 0);
 
     if (Flags.startNewSystem) {
-      Model.particleSystems += Flags.newSystem
+      Flags.newSystem.init
+      Model.particleSystems(numSystems) = Flags.newSystem
       Flags.startNewSystem = false
+      numSystems += 1
     }
 
     var index = 0
-    val numSystems = Model.particleSystems.size
     
-
     while (index < numSystems) {
       val system = Model.particleSystems(index)
-      if (!system.isInit) {
-        system.init
-      }
+
       system.draw(gl, Shaders.program, elapsedTime)
 
       if (system.isDone) {
@@ -73,11 +71,12 @@ class OpenGLRenderer extends Renderer {
     index = 0
 
     while (index < systemsToErase.size) {
-      Model.particleSystems -= systemsToErase(index)
+      numSystems -= 1
       index += 1
     }
     systemsToErase.clear
 
+    //Log.e("com.example.androidtest", s"fps: ${1.0 / elapsedTime}");
     elapsedTime = (SystemClock.elapsedRealtime - startTime) / 1000.0
   }
 

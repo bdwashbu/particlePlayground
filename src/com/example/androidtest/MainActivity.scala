@@ -56,6 +56,7 @@ object Flags {
   @volatile var startNewSystem = false
   var newSystemX = 0.0f
   var newSystemY = 0.0f
+  var newSystem: ParticleSystem = null
 }
 
 object Shaders {
@@ -138,7 +139,7 @@ object ShaderUtils {
 }
 
 object Model {
-  val particleSystems = new ListBuffer[ParticleSystem]()// = ParticleSystem(500)
+  val particleSystems: Array[ParticleSystem] = Array.fill(5)(null)
 }
 
 class MainScala extends Activity with SensorEventListener {
@@ -165,9 +166,12 @@ class MainScala extends Activity with SensorEventListener {
         
     action match {
         case (MotionEvent.ACTION_DOWN) =>
-          Flags.startNewSystem = true
+          
           Flags.newSystemX = event.getX
           Flags.newSystemY = 1920 - event.getY
+          Flags.newSystem = ParticleSystem(1000)
+          Flags.newSystem.freeFall(Flags.newSystemX, Flags.newSystemY)
+          Flags.startNewSystem = true
             //ParticleSystem.explode(event.getX, 1920 - event.getY)
           
             true
@@ -195,6 +199,7 @@ class MainScala extends Activity with SensorEventListener {
     val renderer = new OpenGLRenderer()
     view.setEGLContextClientVersion(3)
     view.setRenderer(renderer)
+    view.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
     
     setContentView(view);
     setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
